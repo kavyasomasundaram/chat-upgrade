@@ -1,49 +1,89 @@
 const searchBar = document.querySelector(".users .search input"),
-searchBtn = document.querySelector(".users .search button"),
-usersList = document.querySelector(".users .users-list");
+      searchBtn = document.querySelector(".users .search button"),
+      usersList = document.querySelector(".users .users-list");
 
-searchBtn.onclick = ()=>{
+let searchTimeout;
+
+// Toggle search input visibility
+searchBtn.onclick = () => {
     searchBar.classList.toggle("active");
-    searchBar.focus();
     searchBtn.classList.toggle("active");
     searchBar.value = "";
+    searchBar.focus();
+};
+
+// Generic fetch function
+async function fetchUsers(url, method = "GET", params = null) {
+    let options = { method };
+    if (method === "POST" && params) {
+        options.headers = { "Content-type": "application/x-www-form-urlencoded" };
+        options.body = params;
+    }
+    try {
+        const response = await fetch(url, options);
+        if (!response.ok) throw new Error("Network response was not ok");
+        const data = await response.text();
+        return data;
+    } catch (error) {
+        console.error("Fetch error:", error);
+        return "";
+    }
 }
 
-searchBar.onkeyup = ()=>{
-   let searchTerm = searchBar.value;
-    if(searchTerm != ""){
-        searchBar.classList.add("active");
-    }else{
-        searchBar.classList.remove("active");
-    }    
-    
-       //start Ajax
-       let xhr = new XMLHttpRequest();
-       xhr.open("POST", "php/search.php", true);
-       xhr.onload = ()=>{
-           if(xhr.readyState === XMLHttpRequest.DONE){
-               if(xhr.status === 200){
-                   let data = xhr.response;
-                   usersList.innerHTML = data;
-               }
-           }
-       }
-       xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
-       xhr.send("searchTerm=" + searchTerm); 
-}
-setInterval(()=>{
-    //start Ajax
-    let xhr = new XMLHttpRequest();   //creating XML object
-    xhr.open("GET", "php/users.php", true);
-    xhr.onload = ()=>{
-        if(xhr.readyState === XMLHttpRequest.DONE){
-            if(xhr.status === 200){
-                let data = xhr.response;
-                if(!searchBar.classList.contains("active")){        //if active active not contains in search bar then add this
-                    usersList.innerHTML = data;
-                }     
-            }
-        }
+// Update users list dynamically
+async function updateUsersList() {
+    if (!searchBar.classList.contains("active")) {
+        const data = await fetchUsers("php/users.php");
+        usersList.innerHTML = data;
+
+        // Attach click event to remove unread badge and mark messages as read
+        const links = usersList.querySelectorAll("a");
+        links.forEach(link => {
+            link.onclick = async (e) => {
+                const unreadSpan = link.querySelector(".unread");
+                if (unreadSpan) unreadSpan.remove();
+
+                // Mark messages as read on server
+                const userId = link.getAttribute("data-userid");
+                if (userId) {
+                    try {
+                        await fetch("php/mark_read.php", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                            body: `incoming_id=${userId}`
+                        });
+                    } catch (err) {
+                        console.error("Failed to mark messages as read:", err);
+                    }
+                }
+            };
+        });
     }
-    xhr.send();  
-},500);    //function will run frequently after 500ms
+}
+
+// Handle search input with debounce
+searchBar.onkeyup = () => {
+    const searchTerm = searchBar.value.trim();
+
+    if (searchTerm !== "") {
+        searchBar.classList.add("active");
+    } else {
+        searchBar.classList.remove("active");
+    }
+
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(async () => {
+        if (searchTerm !== "") {
+            const data = await fetchUsers("php/search.php", "POST", "searchTerm=" + encodeURIComponent(searchTerm));
+            usersList.innerHTML = data;
+        } else {
+            updateUsersList();
+        }
+    }, 300);
+};
+
+// Auto refresh every 500ms
+setInterval(updateUsersList, 500);
+
+// Initial fetch
+updateUsersList();

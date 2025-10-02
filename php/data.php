@@ -1,36 +1,74 @@
 <?php
-            while($row= mysqli_fetch_assoc($sql)){
-                $sql2 = "SELECT * FROM messages WHERE (incoming_msg_id = {$row['unique_id']}
-                         OR outgoing_msg_id = {$row['unique_id']}) AND (outgoing_msg_id = {$outgoing_id}
-                         OR incoming_msg_id = {$outgoing_id}) ORDER BY msg_id DESC LIMIT 1";
-                $query2 = mysqli_query($conn, $sql2);
-                $row2 = mysqli_fetch_assoc($query2);
-                if(mysqli_num_rows($query2) > 0){
-                    $result = $row2['msg'];
-                }else{
-                    $result = "No message available";
-                }
+if(session_status() == PHP_SESSION_NONE){
+    session_start();
+}
 
-                    // trimming message if word are more than 28
-                (strlen($result) > 28) ? $msg = substr($result, 0, 28).'...' : $msg = $result;
-                if(isset($row2['outgoing_msg_id'])){
-                    ($outgoing_id == $row2['outgoing_msg_id']) ? $you = "You: " : $you = "";
-                }else{
-                    $you = "";
-                }
-                ($row['status'] == "Offline now") ? $offline = "offline" : $offline = "";
-                ($outgoing_id == $row['unique_id']) ? $hid_me = "hide" : $hid_me = "";
+if(!isset($_SESSION['unique_id'])){
+    header("location: ../login.php");
+    exit;
+}
 
+include_once "config.php";
 
-                $output .= '<a href="chat.php?user_id='.$row['unique_id'].'">
-                            <div class="content">
-                            <img src="php/images/'. $row['img'] .'" alt="">
+if(isset($_POST['outgoing_id'], $_POST['incoming_id'])){
+    $outgoing_id = (int)$_POST['outgoing_id'];
+    $incoming_id = (int)$_POST['incoming_id'];
+} else {
+    echo "Error: Missing data";
+    exit;
+}
+
+// 1️⃣ Mark all incoming messages as read
+mysqli_query($conn, 
+    "UPDATE messages 
+     SET msg_status = 1 
+     WHERE outgoing_msg_id = {$incoming_id} 
+       AND incoming_msg_id = {$outgoing_id} 
+       AND msg_status = 0"
+);
+
+$output = "";
+
+// 2️⃣ Fetch all messages between the two users
+$sql = "SELECT messages.*, users.img, users.fname, users.lname
+        FROM messages 
+        LEFT JOIN users ON users.unique_id = messages.outgoing_msg_id
+        WHERE (outgoing_msg_id = {$outgoing_id} AND incoming_msg_id = {$incoming_id})
+           OR (outgoing_msg_id = {$incoming_id} AND incoming_msg_id = {$outgoing_id}) 
+        ORDER BY msg_id ASC";
+
+$query = mysqli_query($conn, $sql);
+
+if(mysqli_num_rows($query) > 0){
+    while($row = mysqli_fetch_assoc($query)){
+
+        // Format timestamp
+        $time_display = '';
+        if(isset($row['msg_time'])){
+            $time_display = '<span class="msg-time">'.date("h:i a", strtotime($row['msg_time'])).'</span>';
+        }
+
+        // Determine outgoing or incoming
+        if($row['outgoing_msg_id'] === $outgoing_id){  // sender
+            $output .= '<div class="chat outgoing" data-msg-id="'. $row['msg_id'] .'">
                             <div class="details">
-                                <span>'. $row['fname'] . " " . $row['lname'] .'</span>
-                                <p>' . $you . $msg .'</p>
-                                </div>
-                                </div>
-                                <div class="status-dot '.$offline.'"><i class="fas fa-circle"></i></div>
-                                </a>';
-            }
+                                <img src="php/images/'. htmlspecialchars($row['img'], ENT_QUOTES) .'" alt="">
+                                <p>'. htmlspecialchars($row['msg'], ENT_QUOTES, 'UTF-8') .' '. $time_display .'</p>
+                            </div>
+                        </div>';
+        } else {  // receiver
+            $output .= '<div class="chat incoming" data-msg-id="'. $row['msg_id'] .'">
+                            <img src="php/images/'. htmlspecialchars($row['img'], ENT_QUOTES) .'" alt="">
+                            <div class="details">
+                                <p>'. htmlspecialchars($row['msg'], ENT_QUOTES, 'UTF-8') .' '. $time_display .'</p>
+                            </div>
+                        </div>';
+        }
+    }
+
+    echo $output;
+
+} else {
+    echo '<div class="text">No messages are available</div>';
+}
 ?>

@@ -1,55 +1,29 @@
-const form =document.querySelector(".typing-area"),
-inputField =form.querySelector(".input-field"),
-sendBtn = form.querySelector("button"),
-chatBox = document.querySelector(".chat-box");
+// Update users list dynamically
+async function updateUsersList() {
+    // Only fetch if search is not active
+    if (!searchBar.classList.contains("active")) {
+        const data = await fetchUsers("php/users.php");
+        usersList.innerHTML = data;
 
-form.onsubmit = (e)=>{
-    e.preventDefault();
-}
+        // Attach click to remove unread badge on user click
+        usersList.querySelectorAll("a").forEach(link => {
+            link.onclick = async () => {
+                const unreadSpan = link.querySelector(".unread");
+                if (unreadSpan) unreadSpan.remove();
 
-sendBtn.onclick = ()=>{
-    let xhr = new XMLHttpRequest();
-    xhr.open("POST", "php/insert-chat.php", true);
-    xhr.onload = ()=>{
-        if(xhr.readyState === XMLHttpRequest.DONE){
-            if(xhr.status === 200){
-                inputField.value = ""; //once message inserted into datbase then leave blank the input field
-                scrollToBottom();
-            }
-        }
-    }
-    let formData = new FormData(form);
-    xhr.send(formData);
-}
-
-chatBox.onmouseenter = ()=>{
-    chatBox.classList.add("active");
-}
-chatBox.onmouseleave =()=>{
-    chatBox.classList.remove("acitve");
-}
-
-
-setInterval(()=>{
-    //start Ajax
-    let xhr = new XMLHttpRequest();   //creating XML object
-    xhr.open("POST", "php/get-chat.php", true);
-    xhr.onload = ()=>{
-        if(xhr.readyState === XMLHttpRequest.DONE){
-            if(xhr.status === 200){
-                let data = xhr.response;
-                chatBox.innerHTML = data;    
-                if(!chatBox.classList.contains("acitve")){          //if active class not caontins in chatbox the scroll to bottom
-                    scrollToBottom();
+                // Mark messages as read on the server
+                const userId = link.getAttribute("href").split("user_id=")[1];
+                if (userId) {
+                    await fetch("php/mark_read.php", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: `incoming_id=${userId}`
+                    });
                 }
-            }
-        }
+            };
+        });
     }
-    let formData = new FormData(form);
-    xhr.send(formData);      
-},500);    //function will run frequently after 500ms
-
-
-function scrollToBottom(){
-    chatBox.scrollTop = chatBox.scrollHeight;
 }
+
+// Auto refresh users list every 500ms
+setInterval(updateUsersList, 500);
